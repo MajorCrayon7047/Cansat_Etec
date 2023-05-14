@@ -144,3 +144,5 @@ void loop(){
     LoRa.endPacket();
     }
 }
+
+//Realizado por MajorCrayon7047 (https://github.com/MajorCrayon7047)
