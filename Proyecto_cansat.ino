@@ -5,6 +5,9 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include <BH1750.h>
+#include <ArduinoJson.h>
+#include "FS.h"
+#include <LittleFS.h>
 #include <TinyGPS++.h>
 #include <SoftwareSerial.h>
 #include "heltec.h"
@@ -58,7 +61,7 @@ void read_MPU(){
 void read_light(){
     luz = Luxometro.readLightLevel();
 }
-void read_gas(){
+void read_gas(){    //MQ sensor de gas
     int read = analogRead(A0);
     gasVoltage = read * (3.3 / 1023.0);
 }
@@ -81,9 +84,39 @@ void read_GPS(){
   }
 }
 
+void save_local_data(String data){
+        if (LittleFS.exists("/data.json")){
+            File file = LittleFS.open("/data.json", "r");
+            DynamicJsonBuffer  jsonBuffer(512);
+            JsonObject& json = jsonBuffer.parseObject(file);
+            delay(1);
+            file.close();
+            if (!json.success()) {
+                Serial.println("parseObject() failed");
+                return
+                }
+        else{
+            DynamicJsonDocument json(512);
+        }
+        int jsonSize = json.size() + 1;
+        json[jsonSize] = data;
+        File file = LittleFS.open("/config.json", "w");
+        if (!file){
+            Serial.println("No funco");
+            return;
+        }
+        file.print(json);
+        delay(1);
+        file.close();
+  }
+
 void setup(){
 	Serial.begin(9600);
     gpsSerial.begin(9600);
+    if(!LittleFS.begin()){
+        Serial.println("An Error has occurred while mounting LittleFS");
+        return;
+    }
     if (!bmp.begin()){
         Serial.println("No se encontro el sensor BMP180 ahora me quedare en un bucle infinito");
         while(1) {}
@@ -107,42 +140,17 @@ void loop(){
     read_MPU();
     read_GPS();
 
+    //Se almacenan en una variable los valores de los sensores en formato JSON
+    String data = String("{hum:") + string(dht11[1]) + String(",temp:") + String(bmp180[0]) + String(",press:") + String(bmp180[1]) + String(",alt:") + String(bmp180[2]) + String(",gas:") + String(gasVoltage) + String(",luz:") + String(luz) + String(",acele:[") + String(mpu6050[0]) + String(",") + String(mpu6050[1]) + String(",") + String(mpu6050[2]) + String("],giro:") + String(mpu6050[3]) + String(",") + String(mpu6050[4]) + String(",") + String(mpu6050[5]) + String(",GPS:[") + String(NEO_gps[0]) + String(",") + String(NEO_gps[1]) + String(",") + String(NEO_gps[2]) + String("}]");
+
+    //Se guarda los valores en el alamcenamiento interno del ESP32 en formato JSON
+    save_local_data(data);
+    
     //Envio de paquete via LoRa en formato JSON para decodificarlo en el receptor
-    LoRa.beginPacket();
+    LoRa.beginPacket();     //CABECERA DEL PAQUETE DE DATOS
     LoRa.setTxPower(5,RF_PACONFIG_PASELECT_PABOOST);
-    LoRa.print(F("{hum:"));
-    LoRa.print(dht11[1]);
-    LoRa.print(",temp:");
-    LoRa.print(bmp180[0]);
-    LoRa.print(",press:");
-    LoRa.print(bmp180[1]);
-    LoRa.print(",alt:");
-    LoRa.print(bmp180[2]);
-    LoRa.print(",gas:");
-    LoRa.print(gasVoltage);
-    LoRa.print(",luz:");
-    LoRa.print(luz);
-    LoRa.print(",acele:[");
-    LoRa.print(mpu6050[0]);
-    LoRa.print(",");
-    LoRa.print(mpu6050[1]);
-    LoRa.print(",");
-    LoRa.print(mpu6050[2]);
-    LoRa.print("],giro:");
-    LoRa.print(mpu6050[3]);
-    LoRa.print(",");
-    LoRa.print(mpu6050[4]);
-    LoRa.print(",");
-    LoRa.print(mpu6050[5]);
-    LoRa.print(",GPS:[");
-    LoRa.print(NEO_gps[0]);
-    LoRa.print(",");
-    LoRa.print(NEO_gps[1]);
-    LoRa.print(",");
-    LoRa.print(NEO_gps[2]);
-    LoRa.print("]}");
-    LoRa.endPacket();
+    LoRa.print(data);
+    LoRa.endPacket();       //COLA DEL PAQUETE DE DATOS
     }
 }
-
 //Realizado por MajorCrayon7047 (https://github.com/MajorCrayon7047)
