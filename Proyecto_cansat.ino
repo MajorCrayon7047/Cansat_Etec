@@ -153,4 +153,3 @@ void loop(){
     LoRa.endPacket();       //COLA DEL PAQUETE DE DATOS
     }
 }
-//Realizado por MajorCrayon7047 (https://github.com/MajorCrayon7047)
