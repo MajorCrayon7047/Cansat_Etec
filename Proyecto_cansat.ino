@@ -5,12 +5,11 @@
 #include "I2Cdev.h"
 #include "MPU6050.h"
 #include <BH1750.h>
+#include <TinyGPS++.h>
+#include <SoftwareSerial.h>
 #include "heltec.h"
 
 //variables globales
-float bmp180[3];
-float dht11[2];
-int16_t mpu6050[6];
 uint16_t luz;
 float gasVoltage;
 #define DHTPIN 2
@@ -21,17 +20,26 @@ int16_t ax, ay, az;
 int16_t gx, gy, gz;
 unsigned long ultima=0;
 
+//En estos arrays se van a guardar los datos medidos por cada sensor
+float bmp180[3];        
+float dht11[2];
+int16_t mpu6050[6];
+float NEO_gps[3];
+
 //objetos:
 Adafruit_BMP085 bmp;
 DHT dht(DHTPIN, DHTTYPE);
 MPU6050 mpu(mpuAddress);
 BH1750 Luxometro;
+TinyGPSPlus gps;
+SoftwareSerial gpsSerial(2, 3);  // RX, TX
+TinyGPSPlus gps;
 
-//Funciones:
+//Funciones para la lectura de sensores:
 void read_bmp(){
     bmp180[0] = bmp.readTemperature();
     bmp180[1] = bmp.readPressure() * 0.01;
-    bmp180[2] = bmp.readAltitude(1080.0); //esto hay que revisarlo
+    bmp180[2] = bmp.readAltitude(1080.0); //lee la altitud tomando de referencia 1080.0 hPa
 }
 void read_dht(){
     dht11[0] = dht.readTemperature();
@@ -54,11 +62,30 @@ void read_gas(){
     int read = analogRead(A0);
     gasVoltage = read * (3.3 / 1023.0);
 }
+void read_GPS(){
+    while (gpsSerial.available() > 0) {
+    if (gps.encode(gpsSerial.read())) {
+      if (gps.location.isValid()) {
+        // Obtener y imprimir la latitud, longitud y altitud
+        Serial.print("Latitud: ");
+        Serial.println(gps.location.lat(), 6);
+        Serial.print("Longitud: ");
+        Serial.println(gps.location.lng(), 6);
+        Serial.print("Altitud: ");
+        Serial.println(gps.altitude.meters());
+        NEO_gps[0] = gps.location.lat();
+        NEO_gps[1] = gps.location.lng();
+        NEO_gps[2] = gps.location.meters();
+      }
+    }
+  }
+}
 
 void setup(){
-	Serial.begin(115200);
+	Serial.begin(9600);
+    gpsSerial.begin(9600);
     if (!bmp.begin()){
-        Serial.println("No se encontro el sensor BMP180 ahora me quedare en un bucle infinito, jodete");
+        Serial.println("No se encontro el sensor BMP180 ahora me quedare en un bucle infinito");
         while(1) {}
     }
     dht.begin();
@@ -78,6 +105,7 @@ void loop(){
     read_gas();
     read_light();
     read_MPU();
+    read_GPS();
 
     //Envio de paquete via LoRa en formato JSON para decodificarlo en el receptor
     LoRa.beginPacket();
@@ -106,7 +134,13 @@ void loop(){
     LoRa.print(mpu6050[4]);
     LoRa.print(",");
     LoRa.print(mpu6050[5]);
-    LoRa.print("}");
+    LoRa.print(",GPS:[");
+    LoRa.print(NEO_gps[0]);
+    LoRa.print(",");
+    LoRa.print(NEO_gps[1]);
+    LoRa.print(",");
+    LoRa.print(NEO_gps[2]);
+    LoRa.print("]}");
     LoRa.endPacket();
     }
 }
